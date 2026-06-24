@@ -1,123 +1,114 @@
 # Reflection — Lab 20 (Personal Report)
 
-> **Đây là báo cáo cá nhân.** Mỗi học viên chạy lab trên laptop của mình, với spec của mình. Số liệu của bạn không so sánh được với bạn cùng lớp — chỉ so sánh **before vs after trên chính máy bạn**. Grade rubric tính theo độ rõ ràng của setup + tuning của bạn, không phải tốc độ tuyệt đối.
-
----
-
-**Họ Tên:** _<Họ Tên>_
-**Cohort:** _<A20-K1 / A20-K2 / ...>_
-**Ngày submit:** _<YYYY-MM-DD>_
+**Họ Tên:** Thanh Danh  
+**Cohort:** not provided  
+**Ngày submit:** 2026-06-24
 
 ---
 
 ## 1. Hardware spec (từ `00-setup/detect-hardware.py`)
 
-> Paste output của `python 00-setup/detect-hardware.py` vào đây, hoặc điền thủ công:
+- **OS:** Windows 10 (AMD64)
+- **CPU:** 12th Gen Intel(R) Core(TM) i7-12700H
+- **Cores:** 14 physical / 20 logical
+- **CPU extensions:** AVX / AVX_VNNI / AVX2 / F16C / FMA / BMI2 shown by native llama.cpp log
+- **RAM:** 15.7 GB
+- **Accelerator:** NVIDIA GeForce RTX 3060 Laptop GPU, 6144 MiB
+- **llama.cpp backend đã chọn:** CPU native for the measured runs (`-DGGML_NATIVE=ON`, `-ngl 0`) because CUDA Toolkit / `nvcc` is not installed
+- **Recommended model tier:** Qwen2.5-1.5B-Instruct (Q4_K_M)
 
-- **OS:** _<macOS 14 / Windows 11 / Ubuntu 24.04 / ...>_
-- **CPU:** _<Apple M2 / Intel i7-12700H / AMD Ryzen 7 5800H / ...>_
-- **Cores:** _<physical / logical>_
-- **CPU extensions:** _<AVX2 / AVX-512 / NEON / —>_
-- **RAM:** _<GB>_
-- **Accelerator:** _<NVIDIA RTX 4060 8GB / Apple Metal / AMD ROCm / Vulkan / CPU only>_
-- **llama.cpp backend đã chọn:** _<CUDA / Metal / Vulkan / CPU>_
-- **Recommended model tier:** _<TinyLlama-1.1B / Qwen2.5-1.5B / Llama-3.2-3B / Qwen2.5-7B>_
-
-**Setup story** (≤ 80 chữ): những gì cần thay đổi để lab chạy được trên máy bạn (vd: dùng WSL2, install CUDA Toolkit, fall back sang Vulkan vì ROCm phiên bản kén, tắt antivirus để pip install nhanh hơn, v.v.):
-
-_Answer here._
+**Setup story:** Existing `.venv` was broken because Python 3.11 was blocked in the sandbox. I recreated `.venv` with the installed Python 3.11.9 outside the sandbox, installed dependencies, downloaded the real Qwen2.5 1.5B GGUF files, then built native llama.cpp CPU with `-DGGML_NATIVE=ON`.
 
 ---
 
 ## 2. Track 01 — Quickstart numbers (từ `benchmarks/01-quickstart-results.md`)
 
-> Paste bảng từ `benchmarks/01-quickstart-results.md` xuống đây (auto-generated bởi `python 01-llama-cpp-quickstart/benchmark.py`).
+Settings: `n_threads=14`, `n_ctx=2048`, `n_batch=512`, `n_gpu_layers=0`.
 
 | Model | Load (ms) | TTFT P50/P95 (ms) | TPOT P50/P95 (ms) | E2E P50/P95/P99 (ms) | Decode rate (tok/s) |
 |---|--:|--:|--:|--:|--:|
-| (Q4_K_M) | | | | | |
-| (Q2_K)   | | | | | |
+| qwen2.5-1.5b-instruct-q4_k_m.gguf | 878 | 314 / 366 | 83.1 / 86.8 | 5558 / 5818 / 5882 | 12.0 |
+| qwen2.5-1.5b-instruct-q2_k.gguf | 271 | 307 / 318 | 76.0 / 81.6 | 5075 / 5141 / 5152 | 13.2 |
 
-**Một quan sát** (≤ 50 chữ): Q4_K_M vs Q2_K trên máy bạn — số liệu nói gì? Quality đáng đánh đổi không?
-
-_Answer here._
+**Một quan sát:** Q2_K was about 10% faster in decode rate (13.2 vs 12.0 tok/s) and loaded much faster. I would still prefer Q4_K_M unless RAM is tight, because the speed gap is modest.
 
 ---
 
 ## 3. Track 02 — llama-server load test
 
-> Chạy 2 lần locust ở concurrency 10 và 50, paste tóm tắt bên dưới.
+Python server (`python -m llama_cpp.server`, CPU-only):
 
 | Concurrency | Total RPS | TTFB P50 (ms) | E2E P95 (ms) | E2E P99 (ms) | Failures |
 |--:|--:|--:|--:|--:|--:|
-| 10 | | | | | |
-| 50 | | | | | |
+| 10 | 0.131 | not separately reported by locust | 47000 | 47000 | 0 |
+| 50 | 0.126 | not separately reported by locust | 54000 | 54000 | 0 |
 
-**Batching observation** (từ `record-metrics.py`): peak `llamacpp:n_busy_slots_per_decode` / `requests_processing` ở concurrency 50 = _<…>_, nghĩa là …
+Native server metrics run (`llama-server.exe --metrics`, `-t 2`, `--parallel 4`, `-ngl 0`):
 
-_Answer here._
+| Metric | Value |
+|---|---:|
+| `requests_processing` peak | 4 |
+| `requests_deferred` peak | 6 |
+| `n_busy_slots_per_decode` peak | 3.98 |
+| `tokens_predicted_total` final | 1091 |
+
+**Batching observation:** peak `llamacpp:n_busy_slots_per_decode` / `requests_processing` at concurrency 10 was `3.98 / 4`. The native server kept almost all four parallel slots busy and deferred overflow requests. Continuous batching worked; CPU-only decode was still the bottleneck.
 
 ---
 
 ## 4. Track 03 — Milestone integration
 
-- **N16 (Cloud/IaC):** _<piece you connected — k3d cluster / GCP project / docker-compose / "stub: localhost only">_
-- **N17 (Data pipeline):** _<piece — Airflow DAG / batch job / "stub: in-memory dict">_
-- **N18 (Lakehouse):** _<piece — Delta Lake table / Iceberg / "stub: SQLite">_
-- **N19 (Vector + Feature Store):** _<piece — Qdrant index / Feast / "stub: TOY_DOCS">_
+- **N16 (Cloud/IaC):** stub: localhost-only llama-server endpoint
+- **N17 (Data pipeline):** stub: in-memory curated serving notes
+- **N18 (Lakehouse):** stub: `TOY_DOCS` rows as processed records
+- **N19 (Vector + Feature Store):** stub: keyword-overlap retrieval over `TOY_DOCS`
 
-**Nơi tốn nhiều ms nhất** trong pipeline (đo bằng `time.perf_counter` trong `pipeline.py`):
+**Nơi tốn nhiều ms nhất** trong pipeline:
 
-- embed: _<ms>_
-- retrieve: _<ms>_
-- llama-server: _<ms>_
+| Query | retrieve (ms) | llama-server (ms) | total (ms) |
+|---|---:|---:|---:|
+| Why is goodput more useful than throughput? | 0.0 | 5639.7 | 5639.8 |
+| What problem does PagedAttention actually solve? | 0.0 | 4933.2 | 4933.3 |
+| When should I think about disaggregated serving? | 0.0 | 5786.8 | 5786.8 |
 
-**Reflection** (≤ 60 chữ): bottleneck nằm ở đâu? Có khớp với kỳ vọng không?
-
-_Answer here._
+**Reflection:** The bottleneck is the llama-server call, not retrieval. That matches expectation because this demo uses a toy in-memory retriever; under CPU-only serving, generation dominates the pipeline.
 
 ---
 
 ## 5. Bonus — The single change that mattered most
 
-> **Most important section.** Pick **một** thay đổi từ bonus track (build flag, thread sweep, quant pick, GPU offload, KV-cache quantization, speculative decoding, bất cứ challenge nào trong `BONUS-llama-cpp-optimization/CHALLENGES.md`) đã tạo ra speedup lớn nhất trên máy bạn.
+**Change:** cap native llama.cpp CPU decode threads based on measured thread sweep, not on physical/logical core count.
 
-**Change:** _<vd: rebuild llama.cpp với `-DGGML_NATIVE=ON -DGGML_BLAS=ON`; vd: hạ `-t` từ 12 xuống 6; vd: bật Metal trên M2>_
+**Before vs after** (from `benchmarks/bonus-thread-sweep.md`):
 
-**Before vs after** (paste 2-3 dòng từ sweep output):
-
-```
-before: <số liệu>
-after:  <số liệu>
-speedup: ~<X.Y>×
+```text
+before: -t 14 => 11.23 tok/s
+after:  -t 2  => 19.29 tok/s
+speedup: ~1.72×
 ```
 
-**Tại sao nó work** (1–2 đoạn ngắn — đây là phần grader đọc kỹ nhất):
+**Tại sao nó work:** This result was different from my first expectation. I expected the physical-core count to win, but the measured curve peaked at only 2 threads and got worse at 7, 14, 20, and 40. For this small CPU-only decode benchmark, adding threads increased coordination and memory/cache contention faster than it added useful compute.
 
-_Giải thích như đang nói với một bạn cùng lớp đang ngồi cạnh. Tránh "vibes-based" reasoning — bám vào mô hình mental của hardware (memory bandwidth? compute? cache?). Nếu kết quả khác kỳ vọng từ deck, nói rõ — đó là phần grader thưởng điểm._
+The lesson is that local LLM decode can be memory-bandwidth/cache-bound rather than pure compute-bound. On this laptop, "use all cores" is a bad default. The best serving knob was to measure the thread curve and cap threads aggressively.
+
+Bonus C8 semantic cache was also run offline: 3/8 hits, 38% hit rate, 3 LLM calls saved in the synthetic prompt stream.
 
 ---
 
 ## 6. (Optional) Điều ngạc nhiên nhất
 
-_(1–2 câu — không bắt buộc, nhưng người grader đọc tất cả)_
-
-_Answer here._
+The most surprising result was that `-t 2` beat `-t 14` by about 1.72×. More CPU threads made this workload slower, not faster.
 
 ---
 
 ## 7. Self-graded checklist
 
-- [ ] `hardware.json` đã commit
-- [ ] `models/active.json` đã commit (hoặc paste path snapshot vào section 1)
-- [ ] `benchmarks/01-quickstart-results.md` đã commit
-- [ ] `benchmarks/02-server-results.md` (hoặc CSV từ `record-metrics.py`) đã commit
-- [ ] `benchmarks/bonus-*.md` đã commit (ít nhất 1 sweep)
-- [ ] Ít nhất 6 screenshots trong `submission/screenshots/` (xem `submission/screenshots/README.md`)
-- [ ] `make verify` exit 0 (chạy ngay trước khi push)
+- [x] `hardware.json` đã commit
+- [x] `models/active.json` đã commit
+- [x] `benchmarks/01-quickstart-results.md` đã commit
+- [x] `benchmarks/02-server-results.md` and `benchmarks/02-server-metrics.csv` đã commit
+- [x] `benchmarks/bonus-*.md` đã commit
+- [x] Ít nhất 6 screenshots trong `submission/screenshots/`
+- [x] `make verify` / `python scripts/verify.py` exit 0
 - [ ] Repo trên GitHub ở chế độ **public**
 - [ ] Đã paste public repo URL vào VinUni LMS
-
----
-
-**Quan trọng:** repo phải **public** đến khi điểm được công bố. Nếu private, grader không xem được → 0 điểm.

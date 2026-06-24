@@ -1,0 +1,17 @@
+==> Recording http://localhost:8080/metrics for 60s, every 2.0s
+   t=1782294412  reqs_proc=0  deferred=0  busy_slots=0.00  tok_pred=0
+   t=1782294416  reqs_proc=2  deferred=0  busy_slots=1.50  tok_pred=0
+   t=1782294422  reqs_proc=4  deferred=2  busy_slots=2.75  tok_pred=0
+   t=1782294426  reqs_proc=4  deferred=6  busy_slots=3.85  tok_pred=0
+   t=1782294431  reqs_proc=4  deferred=6  busy_slots=3.93  tok_pred=0
+   t=1782294435  reqs_proc=4  deferred=6  busy_slots=3.95  tok_pred=237
+   t=1782294439  reqs_proc=4  deferred=6  busy_slots=3.96  tok_pred=237
+   t=1782294444  reqs_proc=4  deferred=4  busy_slots=3.97  tok_pred=397
+   t=1782294449  reqs_proc=4  deferred=2  busy_slots=3.97  tok_pred=637
+   t=1782294453  reqs_proc=4  deferred=6  busy_slots=3.97  tok_pred=637
+   t=1782294457  reqs_proc=4  deferred=6  busy_slots=3.98  tok_pred=637
+   t=1782294462  reqs_proc=4  deferred=6  busy_slots=3.98  tok_pred=797
+   t=1782294466  reqs_proc=4  deferred=6  busy_slots=3.98  tok_pred=1011
+   t=1782294470  reqs_proc=4  deferred=6  busy_slots=3.98  tok_pred=1091
+
+==> Wrote benchmarks\02-server-metrics.csv (14 samples)
